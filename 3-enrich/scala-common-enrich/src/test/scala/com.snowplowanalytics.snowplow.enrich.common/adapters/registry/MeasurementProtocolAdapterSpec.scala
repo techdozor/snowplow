@@ -39,6 +39,7 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
     toRawEvents must return a succNel if the payload is correct                  $e4
     toRawEvents must return a succNel containing the added contexts              $e5
     toRawEvents must return a succNel containing the direct mappings             $e6
+    toRawEvents must return a succNel containing properly typed contexts         $e7
   """
 
   implicit val resolver = SpecHelpers.IgluResolver
@@ -160,6 +161,38 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
            |}]
          |}""".stripMargin.replaceAll("[\n\r]", "")
     val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO, "ip" -> "some ip")
+    actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
+  }
+
+  def e7 = {
+    val params = SpecHelpers.toNameValuePairs(
+      "t" -> "item", "in" -> "item name", "ip" -> "12.228", "iq" -> "12", "aip" -> "0")
+    val payload = CollectorPayload(api, params, None, None, source, context)
+    val actual = MeasurementProtocolAdapter.toRawEvents(payload)
+
+    val expectedUE =
+      """|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/unstruct_event/jsonschema/1-0-0",
+           |"data":{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/item/jsonschema/1-0-0",
+             |"data":{
+               |"price":12.23,
+               |"name":"item name",
+               |"quantity":12
+             |}
+           |}
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    val expectedCO =
+      """|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
+           |"data":[{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/general/jsonschema/1-0-0",
+             |"data":{"anonymizeIp":false}
+           |}]
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    // ip, iq and in are direct mappings too
+    val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO,
+      "ti_pr" -> "12.228", "ti_qu" -> "12", "ti_nm" -> "item name")
     actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
   }
 }
