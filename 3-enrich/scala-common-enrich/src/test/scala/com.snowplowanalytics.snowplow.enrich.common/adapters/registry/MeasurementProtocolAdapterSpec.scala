@@ -33,13 +33,14 @@ import loaders.{CollectorApi, CollectorSource, CollectorContext, CollectorPayloa
 class MeasurementProtocolAdapterSpec extends Specification with DataTables with ValidationMatchers {
   def is = s2"""
     This is a specification to test the MeasurementProtocolAdapter functionality
-    toRawEvents must return a failNel if the query string is empty               $e1
-    toRawEvents must return a failNel if there is no t param in the query string $e2
-    toRawEvents must return a failNel if there are no corresponding hit types    $e3
-    toRawEvents must return a succNel if the payload is correct                  $e4
-    toRawEvents must return a succNel containing the added contexts              $e5
-    toRawEvents must return a succNel containing the direct mappings             $e6
-    toRawEvents must return a succNel containing properly typed contexts         $e7
+    toRawEvents returns a failNel if the query string is empty               $e1
+    toRawEvents returns a failNel if there is no t param in the query string $e2
+    toRawEvents returns a failNel if there are no corresponding hit types    $e3
+    toRawEvents returns a succNel if the payload is correct                  $e4
+    toRawEvents returns a succNel containing the added contexts              $e5
+    toRawEvents returns a succNel containing the direct mappings             $e6
+    toRawEvents returns a succNel containing properly typed contexts         $e7
+    toRawEvents returns a succNel containing pageview as a context           $e8
   """
 
   implicit val resolver = SpecHelpers.IgluResolver
@@ -190,9 +191,35 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
              |"data":{"anonymizeIp":false}
            |}]
          |}""".stripMargin.replaceAll("[\n\r]", "")
-    // ip, iq and in are direct mappings too
     val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO,
+      // ip, iq and in are direct mappings too
       "ti_pr" -> "12.228", "ti_qu" -> "12", "ti_nm" -> "item name")
+    actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
+  }
+
+  def e8 = {
+    val params = SpecHelpers.toNameValuePairs(
+      "t" -> "exception", "exd" -> "ex desc", "exf" -> "1", "dh" -> "host name")
+    val payload = CollectorPayload(api, params, None, None, source, context)
+    val actual = MeasurementProtocolAdapter.toRawEvents(payload)
+
+    val expectedUE =
+      """|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/unstruct_event/jsonschema/1-0-0",
+           |"data":{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/exception/jsonschema/1-0-0",
+             |"data":{"description":"ex desc","isFatal":true}
+           |}
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    val expectedCO =
+      """|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
+           |"data":[{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/page_view/jsonschema/1-0-0",
+             |"data":{"documentHostName":"host name"}
+           |}]
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO)
     actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
   }
 }

@@ -46,6 +46,8 @@ object MeasurementProtocolAdapter extends Adapter {
   private val protocol = s"$vendor-$protocolVersion"
   private val format = "jsonschema"
   private val schemaVersion = "1-0-0"
+  
+  private val pageViewHitType = "pageview"
 
   type Translation = (Function1[String, Validation[String, FieldType]], String)
   case class MPData(schemaUri: String, translationTable: Map[String, Translation])
@@ -151,35 +153,36 @@ object MeasurementProtocolAdapter extends Adapter {
     )
   )
 
-  private val contextData = List(
-    MPData(SchemaKey(gaVendor, "undocumented", format, schemaVersion).toSchemaUri,
-      List("a", "jid", "gjid").map(e => e -> idTranslation(e)).toMap),
-    MPData(SchemaKey(gaVendor, "private", format, schemaVersion).toSchemaUri,
-      (List("_v", "_u", "_gid").map(e => e -> idTranslation(e.tail)) ++
-        List("_s", "_r").map(e => e -> intTranslation(e.tail))).toMap),
-    MPData(SchemaKey(vendor, "general", format, schemaVersion).toSchemaUri,
-      Map(
-        "v"   -> idTranslation("protocolVersion"),
-        "tid" -> idTranslation("trackingId"),
-        "aip" -> booleanTranslation("anonymizeIp"),
-        "ds"  -> idTranslation("dataSource"),
-        "qt"  -> intTranslation("queueTime"),
-        "z"   -> idTranslation("cacheBuster")
-      )
-    ),
-    MPData(SchemaKey(vendor, "user", format, schemaVersion).toSchemaUri,
-      Map("cid" -> idTranslation("clientId"), "uid" -> idTranslation("userId"))),
-    MPData(SchemaKey(vendor, "session", format, schemaVersion).toSchemaUri,
-      Map(
-        "sc"    -> idTranslation("sessionControl"),
-        "uip"   -> idTranslation("ipOverride"),
-        "ua"    -> idTranslation("userAgentOverride"),
-        "geoid" -> idTranslation("geographicalOverride")
-      )
-    ),
-    MPData(SchemaKey(vendor, "traffic_source", format, schemaVersion).toSchemaUri,
-      Map(
-        "dr"    -> idTranslation("documentReferrer"),
+  // pageview can be a context too
+  private val contextData = unstructEventData(pageViewHitType) :: List(
+      MPData(SchemaKey(gaVendor, "undocumented", format, schemaVersion).toSchemaUri,
+        List("a", "jid", "gjid").map(e => e -> idTranslation(e)).toMap),
+      MPData(SchemaKey(gaVendor, "private", format, schemaVersion).toSchemaUri,
+        (List("_v", "_u", "_gid").map(e => e -> idTranslation(e.tail)) ++
+          List("_s", "_r").map(e => e -> intTranslation(e.tail))).toMap),
+      MPData(SchemaKey(vendor, "general", format, schemaVersion).toSchemaUri,
+        Map(
+          "v"   -> idTranslation("protocolVersion"),
+          "tid" -> idTranslation("trackingId"),
+          "aip" -> booleanTranslation("anonymizeIp"),
+          "ds"  -> idTranslation("dataSource"),
+          "qt"  -> intTranslation("queueTime"),
+          "z"   -> idTranslation("cacheBuster")
+        )
+      ),
+      MPData(SchemaKey(vendor, "user", format, schemaVersion).toSchemaUri,
+        Map("cid" -> idTranslation("clientId"), "uid" -> idTranslation("userId"))),
+      MPData(SchemaKey(vendor, "session", format, schemaVersion).toSchemaUri,
+        Map(
+          "sc"    -> idTranslation("sessionControl"),
+          "uip"   -> idTranslation("ipOverride"),
+          "ua"    -> idTranslation("userAgentOverride"),
+          "geoid" -> idTranslation("geographicalOverride")
+        )
+      ),
+      MPData(SchemaKey(vendor, "traffic_source", format, schemaVersion).toSchemaUri,
+        Map(
+          "dr"    -> idTranslation("documentReferrer"),
         "cn"    -> idTranslation("campaignName"),
         "cs"    -> idTranslation("campaignSource"),
         "cm"    -> idTranslation("campaignMedium"),
@@ -279,7 +282,13 @@ object MeasurementProtocolAdapter extends Adapter {
               Map("e" -> "ue", "ue_pr" -> compact(toUnstructEvent(unstructEventJson)))
             // contexts
             contexts     <- buildContexts(params, contextData, fieldToSchemaMap)
-            contextJsons = contexts.map(c => buildJson(c._1, c._2))
+            contextJsons = contexts
+              .collect {
+                // an unnecessary pageview context might have been built so we need to remove it
+                case (s, d) if
+                  hitType != pageViewHitType || s != unstructEventData(pageViewHitType).schemaUri =>
+                    buildJson(s, d)
+              }
             contextParam =
               if (contextJsons.isEmpty) Map.empty
               else Map("co" -> compact(toContexts(contextJsons.toList)))
