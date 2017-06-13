@@ -231,6 +231,7 @@ object MeasurementProtocolAdapter extends Adapter {
     .flatMap(mpData => mpData.translationTable.keys.map(_ -> mpData.schemaUri))
     .toMap
 
+  // direct mappings between the snowplow tracker protocol and the measurement protocol
   private val directMappings = (hitType: String) => Map(
     "uip" -> "ip",
     "dr"  -> "refr",
@@ -253,6 +254,7 @@ object MeasurementProtocolAdapter extends Adapter {
     "cu"  -> (if (hitType == "transaction") "tr_cu" else "ti_cu")
   )
 
+  // same mappings between the snowplow tracker protocol and the measurement protocol
   private val letThroughFields = List("ua")
 
   /**
@@ -279,7 +281,8 @@ object MeasurementProtocolAdapter extends Adapter {
             unstructEvent       <- translatePayload(params, trTable)
             unstructEventJson    = buildJson(schema, unstructEvent)
             unstructEventParams  =
-              Map("e" -> "ue", "ue_pr" -> compact(toUnstructEvent(unstructEventJson)))
+              Map("e" -> "ue", "ue_pr" -> compact(toUnstructEvent(unstructEventJson)),
+                "tv" -> protocol, "p" -> "srv")
             // contexts
             contexts     <- buildContexts(params, contextData, fieldToSchemaMap)
             contextJsons = contexts

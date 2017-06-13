@@ -51,9 +51,9 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
     "37.157.33.123".some, None, None, Nil, None)
 
   val static = Map(
-    //"tv" -> "com.google.analytics.measurement-protocol-v1",
-    "e"  -> "ue"
-    //"p" -> "srv"
+    "tv" -> "com.google.analytics.measurement-protocol-v1",
+    "e"  -> "ue",
+    "p" -> "srv"
   )
 
   def e1 = {
