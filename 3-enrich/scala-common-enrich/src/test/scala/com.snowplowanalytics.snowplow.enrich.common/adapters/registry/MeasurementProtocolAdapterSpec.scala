@@ -56,6 +56,12 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
     "p" -> "srv"
   )
 
+  val hitContext = (hitType: String) => s"""
+    |{
+      |"schema":"iglu:com.google.analytics.measurement-protocol/hit/jsonschema/1-0-0",
+      |"data":{"hitType":"$hitType"}
+    |}""".stripMargin.replaceAll("[\n\r]", "")
+
   def e1 = {
     val params = SpecHelpers.toNameValuePairs()
     val payload = CollectorPayload(api, params, None, None, source, context)
@@ -100,7 +106,12 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
              |}
            |}
          |}""".stripMargin.replaceAll("[\n\r]", "")
-    val expectedParams = static ++ Map("ue_pr" -> expectedJson)
+    val expectedCO =
+      s"""|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
+           |"data":[${hitContext("pageview")}]
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    val expectedParams = static ++ Map("ue_pr" -> expectedJson, "co" -> expectedCO)
     actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
   }
 
@@ -125,9 +136,9 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
            |}
          |}""".stripMargin.replaceAll("[\n\r]", "")
     val expectedCO =
-      """|{
+      s"""|{
            |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
-           |"data":[{
+           |"data":[${hitContext("pageview")},{
              |"schema":"iglu:com.google.analytics.measurement-protocol/user/jsonschema/1-0-0",
              |"data":{"clientId":"client id"}
            |},{
@@ -154,9 +165,9 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
          |}""".stripMargin.replaceAll("[\n\r]", "")
     // uip is part of the session context
     val expectedCO =
-      """|{
+      s"""|{
            |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
-           |"data":[{
+           |"data":[${hitContext("pageview")},{
              |"schema":"iglu:com.google.analytics.measurement-protocol/session/jsonschema/1-0-0",
              |"data":{"ipOverride":"some ip"}
            |}]
@@ -184,12 +195,12 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
            |}
          |}""".stripMargin.replaceAll("[\n\r]", "")
     val expectedCO =
-      """|{
+      s"""|{
            |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
            |"data":[{
              |"schema":"iglu:com.google.analytics.measurement-protocol/general/jsonschema/1-0-0",
              |"data":{"anonymizeIp":false}
-           |}]
+           |},${hitContext("item")}]
          |}""".stripMargin.replaceAll("[\n\r]", "")
     val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO,
       // ip, iq and in are direct mappings too
@@ -212,9 +223,9 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
            |}
          |}""".stripMargin.replaceAll("[\n\r]", "")
     val expectedCO =
-      """|{
+      s"""|{
            |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
-           |"data":[{
+           |"data":[${hitContext("exception")},{
              |"schema":"iglu:com.google.analytics.measurement-protocol/page_view/jsonschema/1-0-0",
              |"data":{"documentHostName":"host name"}
            |}]

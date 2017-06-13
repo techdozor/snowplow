@@ -110,7 +110,7 @@ object MeasurementProtocolAdapter extends Adapter {
     "item" -> MPData(
       SchemaKey(vendor, "item", format, schemaVersion).toSchemaUri,
       Map(
-        "ti" -> idTranslation("id"),
+        "ti" -> idTranslation("transactionId"),
         "in" -> idTranslation("name"),
         "ip" -> twoDecimalsTranslation("price"),
         "iq" -> intTranslation("quantity"),
@@ -223,7 +223,9 @@ object MeasurementProtocolAdapter extends Adapter {
       )
     ),
     MPData(SchemaKey(vendor, "content_experiment", format, schemaVersion).toSchemaUri,
-      Map("xid" -> idTranslation("id"), "xvar" -> idTranslation("variant")))
+      Map("xid" -> idTranslation("id"), "xvar" -> idTranslation("variant"))),
+    MPData(SchemaKey(vendor, "hit", format, schemaVersion).toSchemaUri,
+      Map("t" -> idTranslation("hitType"), "ni" -> booleanTranslation("nonInteractionHit")))
   )
 
   // layer of indirection linking fields to schemas
