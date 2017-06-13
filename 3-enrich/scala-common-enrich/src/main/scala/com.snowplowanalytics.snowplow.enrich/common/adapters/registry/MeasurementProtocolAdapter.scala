@@ -85,7 +85,7 @@ object MeasurementProtocolAdapter extends Adapter {
       )
     ),
     "screenview" -> MPData(SchemaKey(vendor, "screen_view", format, schemaVersion).toSchemaUri,
-      Map("cd" -> idTranslation("name"))),
+      Map("cd" -> idTranslation("screenName"))),
     "event" -> MPData(
       SchemaKey(vendor, "event", format, schemaVersion).toSchemaUri,
       Map(
@@ -183,50 +183,52 @@ object MeasurementProtocolAdapter extends Adapter {
       MPData(SchemaKey(vendor, "traffic_source", format, schemaVersion).toSchemaUri,
         Map(
           "dr"    -> idTranslation("documentReferrer"),
-        "cn"    -> idTranslation("campaignName"),
-        "cs"    -> idTranslation("campaignSource"),
-        "cm"    -> idTranslation("campaignMedium"),
-        "ck"    -> idTranslation("campaignKeyword"),
-        "cc"    -> idTranslation("campaignContent"),
-        "ci"    -> idTranslation("campaignId"),
-        "gclid" -> idTranslation("googleAdwordsId"),
-        "dclid" -> idTranslation("googleDisplayAdsId")
-      )
-    ),
-    MPData(SchemaKey(vendor, "system_info", format, schemaVersion).toSchemaUri,
-      Map(
-        "sr" -> idTranslation("screenResolution"),
-        "vp" -> idTranslation("viewportSize"),
-        "de" -> idTranslation("documentEncoding"),
-        "sd" -> idTranslation("screenColors"),
-        "ul" -> idTranslation("userLanguage"),
-        "je" -> booleanTranslation("javaEnabled"),
-        "fl" -> idTranslation("flashVersion")
-      )
-    ),
-    MPData(SchemaKey(vendor, "link", format, schemaVersion).toSchemaUri,
-      Map("linkid" -> idTranslation("id"))),
-    MPData(SchemaKey(vendor, "app", format, schemaVersion).toSchemaUri,
-      Map(
-        "an"   -> idTranslation("name"),
-        "aid"  -> idTranslation("id"),
-        "av"   -> idTranslation("version"),
-        "aiid" -> idTranslation("installerId")
-      )
-    ),
-    MPData(SchemaKey(vendor, "product_action", format, schemaVersion).toSchemaUri,
-      Map(
-        "pa"  -> idTranslation("productAction"),
-        "pal" -> idTranslation("productActionList"),
-        "cos" -> intTranslation("checkoutStep"),
-        "col" -> idTranslation("checkoutStepOption")
-      )
-    ),
-    MPData(SchemaKey(vendor, "content_experiment", format, schemaVersion).toSchemaUri,
-      Map("xid" -> idTranslation("id"), "xvar" -> idTranslation("variant"))),
-    MPData(SchemaKey(vendor, "hit", format, schemaVersion).toSchemaUri,
-      Map("t" -> idTranslation("hitType"), "ni" -> booleanTranslation("nonInteractionHit")))
-  )
+          "cn"    -> idTranslation("campaignName"),
+          "cs"    -> idTranslation("campaignSource"),
+          "cm"    -> idTranslation("campaignMedium"),
+          "ck"    -> idTranslation("campaignKeyword"),
+          "cc"    -> idTranslation("campaignContent"),
+          "ci"    -> idTranslation("campaignId"),
+          "gclid" -> idTranslation("googleAdwordsId"),
+          "dclid" -> idTranslation("googleDisplayAdsId")
+        )
+      ),
+      MPData(SchemaKey(vendor, "system_info", format, schemaVersion).toSchemaUri,
+        Map(
+          "sr" -> idTranslation("screenResolution"),
+          "vp" -> idTranslation("viewportSize"),
+          "de" -> idTranslation("documentEncoding"),
+          "sd" -> idTranslation("screenColors"),
+          "ul" -> idTranslation("userLanguage"),
+          "je" -> booleanTranslation("javaEnabled"),
+          "fl" -> idTranslation("flashVersion")
+        )
+      ),
+      MPData(SchemaKey(vendor, "link", format, schemaVersion).toSchemaUri,
+        Map("linkid" -> idTranslation("id"))),
+      MPData(SchemaKey(vendor, "app", format, schemaVersion).toSchemaUri,
+        Map(
+          "an"   -> idTranslation("name"),
+          "aid"  -> idTranslation("id"),
+          "av"   -> idTranslation("version"),
+          "aiid" -> idTranslation("installerId")
+        )
+      ),
+      MPData(SchemaKey(vendor, "product_action", format, schemaVersion).toSchemaUri,
+        Map(
+          "pa"  -> idTranslation("productAction"),
+          "pal" -> idTranslation("productActionList"),
+          "cos" -> intTranslation("checkoutStep"),
+          "col" -> idTranslation("checkoutStepOption")
+        )
+      ),
+      MPData(SchemaKey(vendor, "content_experiment", format, schemaVersion).toSchemaUri,
+        Map("xid" -> idTranslation("id"), "xvar" -> idTranslation("variant"))),
+      MPData(SchemaKey(vendor, "hit", format, schemaVersion).toSchemaUri,
+        Map("t" -> idTranslation("hitType"), "ni" -> booleanTranslation("nonInteractionHit"))),
+      MPData(SchemaKey(vendor, "promotion_action", format, schemaVersion).toSchemaUri,
+        Map("promoa" -> idTranslation("promotionAction")))
+    )
 
   // layer of indirection linking fields to schemas
   private val fieldToSchemaMap = contextData
