@@ -251,11 +251,9 @@ object MeasurementProtocolAdapter extends Adapter {
     "iq"  -> "ti_qu",
     "ic"  -> "ti_sk",
     "iv"  -> "ti_ca",
-    "cu"  -> (if (hitType == "transaction") "tr_cu" else "ti_cu")
+    "cu"  -> (if (hitType == "transaction") "tr_cu" else "ti_cu"),
+    "ua"  -> "ua"
   )
-
-  // same mappings between the snowplow tracker protocol and the measurement protocol
-  private val letThroughFields = List("ua")
 
   /**
    * Converts a CollectorPayload instance into raw events.
@@ -297,7 +295,6 @@ object MeasurementProtocolAdapter extends Adapter {
               else Map("co" -> compact(toContexts(contextJsons.toList)))
             // direct mappings
             mappings = translatePayload(params, directMappings(hitType))
-            // TODO: let-through fields
           } yield RawEvent(
             api         = payload.api,
             parameters  = unstructEventParams ++ contextParam ++ mappings,
