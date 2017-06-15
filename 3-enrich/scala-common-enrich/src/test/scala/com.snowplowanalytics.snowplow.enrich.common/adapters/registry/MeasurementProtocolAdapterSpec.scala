@@ -41,6 +41,8 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
     toRawEvents returns a succNel containing the direct mappings             $e6
     toRawEvents returns a succNel containing properly typed contexts         $e7
     toRawEvents returns a succNel containing pageview as a context           $e8
+    toRawEvents returns a succNel with composite contexts                    $e9
+    breakDownCompositeField should work properly                             $e20
   """
 
   implicit val resolver = SpecHelpers.IgluResolver
@@ -232,5 +234,51 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
          |}""".stripMargin.replaceAll("[\n\r]", "")
     val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO)
     actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
+  }
+
+  def e9 = {
+    val params = SpecHelpers.toNameValuePairs(
+      "t" -> "transaction", "ti" -> "tr", "cu" -> "EUR", "pr12id" -> "ident", "pr12cd42" -> "val")
+    val payload = CollectorPayload(api, params, None, None, source, context)
+    val actual = MeasurementProtocolAdapter.toRawEvents(payload)
+
+    val expectedUE =
+      """|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/unstruct_event/jsonschema/1-0-0",
+           |"data":{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/transaction/jsonschema/1-0-0",
+             |"data":{"currencyCode":"EUR","id":"tr"}
+           |}
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    val expectedCO =
+      s"""|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
+           |"data":[${hitContext("transaction")},{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/product/jsonschema/1-0-0",
+             |"data":{"sku":"ident","currencyCode":"EUR","index":12}
+           |},{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/product_custom_dimension/jsonschema/1-0-0",
+             |"data":{"dimensionIndex":42,"value":"val","productIndex":12}
+           |}]
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO,
+      "tr_cu" -> "EUR", "tr_id" -> "tr")
+    actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
+  }
+
+  def e20 = {
+    import MeasurementProtocolAdapter._
+    breakDownCompositeField("pr") must beSuccessful((List("pr"), List.empty[String]))
+    breakDownCompositeField("pr12id") must beSuccessful((List("pr", "id"), List("12")))
+    breakDownCompositeField("12") must beFailing("Malformed composite field name: 12")
+    breakDownCompositeField("") must beFailing("Malformed composite field name: ")
+
+    breakDownCompositeField("pr12id", "identifier", "IF") must beSuccessful(
+      Map("IFpr" -> "12", "prid" -> "identifier"))
+    breakDownCompositeField("pr12cm42", "value", "IF") must beSuccessful(
+      Map("IFpr" -> "12", "IFcm" -> "42", "prcm" -> "value"))
+    breakDownCompositeField("pr", "value", "IF") must beSuccessful(Map("pr" -> "value"))
+    breakDownCompositeField("pr", "", "IF") must beSuccessful(Map("pr" -> ""))
+    breakDownCompositeField("pr12", "val", "IF") must beSuccessful(Map("IFpr" -> "12", "pr" -> "val"))
   }
 }

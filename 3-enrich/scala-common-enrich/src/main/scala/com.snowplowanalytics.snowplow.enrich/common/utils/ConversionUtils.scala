@@ -453,13 +453,25 @@ object ConversionUtils {
   }
 
   /**
-   * Converts a String to a Float with two decimal places. Used to honor schemas with
+   * Converts a String to a Double with two decimal places. Used to honor schemas with
    * multipleOf 0.01.
-   * Takes a field name and a string value and return a validated float.
+   * Takes a field name and a string value and return a validated double.
    */
   val stringToTwoDecimals: (String, String) => Validation[String, Double] = (field, str) =>
     try {
       BigDecimal(str).setScale(2, BigDecimal.RoundingMode.HALF_UP).toDouble.success
+    } catch {
+      case nfe: NumberFormatException =>
+        "Field [%s]: cannot convert [%s] to Double".format(field, str).fail
+    }
+
+  /**
+   * Converts a String to a Double.
+   * Takes a field name and a string value and return a validated float.
+   */
+  val stringToDouble: (String, String) => Validation[String, Double] = (field, str) =>
+    try {
+      BigDecimal(str).toDouble.success
     } catch {
       case nfe: NumberFormatException =>
         "Field [%s]: cannot convert [%s] to Double".format(field, str).fail
