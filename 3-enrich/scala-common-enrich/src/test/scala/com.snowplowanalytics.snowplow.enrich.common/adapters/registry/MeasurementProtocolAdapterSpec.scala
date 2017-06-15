@@ -269,9 +269,60 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
     actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
   }
 
-  def e10 = e9
+  def e10 = {
+    val params = SpecHelpers.toNameValuePairs(
+      "t" -> "pageview", "dp" -> "path", "il12pi42id" -> "s", "il12pi42cd36" -> "dim")
+    val payload = CollectorPayload(api, params, None, None, source, context)
+    val actual = MeasurementProtocolAdapter.toRawEvents(payload)
 
-  def e11 = e9
+    val expectedUE =
+      """|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/unstruct_event/jsonschema/1-0-0",
+           |"data":{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/page_view/jsonschema/1-0-0",
+             |"data":{"documentPath":"path"}
+           |}
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    val expectedCO =
+      s"""|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
+           |"data":[${hitContext("pageview")},{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/product_impression/jsonschema/1-0-0",
+             |"data":{"productIndex":42,"sku":"s","listIndex":12}
+           |},{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/product_impression_custom_dimension/jsonschema/1-0-0",
+             |"data":{"customDimensionIndex":36,"value":"dim","productIndex":42,"listIndex":12}
+           |}]
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO)
+    actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
+  }
+
+  def e11 = {
+    val params = SpecHelpers.toNameValuePairs(
+      "t" -> "screenview", "cd" -> "name", "cd12" -> "dim")
+    val payload = CollectorPayload(api, params, None, None, source, context)
+    val actual = MeasurementProtocolAdapter.toRawEvents(payload)
+
+    val expectedUE =
+      """|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/unstruct_event/jsonschema/1-0-0",
+           |"data":{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/screen_view/jsonschema/1-0-0",
+             |"data":{"screenName":"name"}
+           |}
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    val expectedCO =
+      s"""|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
+           |"data":[${hitContext("screenview")},{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/custom_dimension/jsonschema/1-0-0",
+             |"data":{"value":"dim","index":12}
+           |}]
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO)
+    actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
+  }
 
   def e12 = e9
 
