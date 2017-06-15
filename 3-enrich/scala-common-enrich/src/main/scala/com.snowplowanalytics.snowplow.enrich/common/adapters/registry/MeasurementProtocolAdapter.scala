@@ -49,9 +49,17 @@ object MeasurementProtocolAdapter extends Adapter {
   
   private val pageViewHitType = "pageview"
 
+  // models a translation between measurement protocol fields and the fields in Iglu schemas
   type Translation = (Function1[String, Validation[String, FieldType]], String)
+  /**
+   * Case class representing measurement protocol schema data
+   * @param schemaUri uri of the Iglu schema
+   * @param translationTable mapping of measurement protocol field names to field names in Iglu
+   * schemas
+   */
   case class MPData(schemaUri: String, translationTable: Map[String, Translation])
 
+  // class hierarchy defined to type the measurement protocol payload
   sealed trait FieldType
   final case class StringType(s: String) extends FieldType
   final case class IntType(i: Int) extends FieldType
@@ -65,6 +73,7 @@ object MeasurementProtocolAdapter extends Adapter {
       case BooleanType(b) => JBool(b)
     }
 
+  // translations between string and the needed types in the measurement protocol Iglu schemas
   private val idTranslation: (String => Translation) = (fieldName: String) =>
     ((value: String) => StringType(value).success, fieldName)
   private val intTranslation: (String => Translation) = (fieldName: String) =>
@@ -76,6 +85,7 @@ object MeasurementProtocolAdapter extends Adapter {
   private val booleanTranslation: (String => Translation) = (fieldName: String) =>
     (stringToBoolean(fieldName, _: String).map(BooleanType), fieldName)
 
+  // unstruct event mappings
   private val unstructEventData = Map(
     "pageview" -> MPData(
       SchemaKey(vendor, "page_view", format, schemaVersion).toSchemaUri,
@@ -155,8 +165,9 @@ object MeasurementProtocolAdapter extends Adapter {
     )
   )
 
-  // pageview can be a context too
+  // flat context mappings
   private val contextData = {
+    // pageview can be a context too
     val ct = unstructEventData(pageViewHitType) :: List(
       MPData(SchemaKey(gaVendor, "undocumented", format, schemaVersion).toSchemaUri,
         List("a", "jid", "gjid").map(e => e -> idTranslation(e)).toMap),
@@ -228,19 +239,20 @@ object MeasurementProtocolAdapter extends Adapter {
       MPData(SchemaKey(vendor, "content_experiment", format, schemaVersion).toSchemaUri,
         Map("xid" -> idTranslation("id"), "xvar" -> idTranslation("variant"))),
       MPData(SchemaKey(vendor, "hit", format, schemaVersion).toSchemaUri,
-        Map("t" -> idTranslation("hitType"), "ni" -> booleanTranslation("nonInteractionHit"))),
+        Map("t" -> idTranslation("type"), "ni" -> booleanTranslation("nonInteractionHit"))),
       MPData(SchemaKey(vendor, "promotion_action", format, schemaVersion).toSchemaUri,
         Map("promoa" -> idTranslation("promotionAction")))
     )
     ct.map(d => d.schemaUri -> d.translationTable).toMap
   }
 
-  // layer of indirection linking fields to schemas
+  // layer of indirection linking flat context fields to schemas
   private val fieldToSchemaMap = contextData
     .flatMap { case (schema, trTable) => trTable.keys.map(_ -> schema) }
 
   // IF indicates that the value is in the field name
   private val valueInFieldNameIndicator = "IF"
+  // composite context mappings
   private val compositeContextData = List(
     MPData(SchemaKey(vendor, "product", format, schemaVersion).toSchemaUri,
       Map(
@@ -268,7 +280,7 @@ object MeasurementProtocolAdapter extends Adapter {
       Map(
         s"${valueInFieldNameIndicator}pr" -> intTranslation("productIndex"),
         s"${valueInFieldNameIndicator}cm" -> intTranslation("metricIndex"),
-        "prcm"                            -> doubleTranslation("value")
+        "prcm"                            -> intTranslation("value")
       )
     ),
     MPData(SchemaKey(vendor, "product_impression_list", format, schemaVersion).toSchemaUri,
@@ -304,7 +316,7 @@ object MeasurementProtocolAdapter extends Adapter {
         s"${valueInFieldNameIndicator}il" -> intTranslation("listIndex"),
         s"${valueInFieldNameIndicator}pi" -> intTranslation("productIndex"),
         s"${valueInFieldNameIndicator}cm" -> intTranslation("customMetricIndex"),
-        "ilpicm"                          -> doubleTranslation("value")
+        "ilpicm"                          -> intTranslation("value")
       )
     ),
     MPData(SchemaKey(vendor, "promotion", format, schemaVersion).toSchemaUri,
@@ -336,14 +348,24 @@ object MeasurementProtocolAdapter extends Adapter {
     )
   )
 
+  // mechanism used to filter out composite contexts that might have been built unnecessarily
+  // e.g. if the field cd is in the payload it can be a screen name or a custom dimension
+  // it can only be a custom dimension if the field is in the form cd12 which maps to two fields:
+  // IFcd -> 12 and cd -> value, as a result it can be a custom dimension if there are more fields
+  // than there are IF fields in the constructed map
+  // This map holds the number of IF fields in the composite context mappings to ease the check
+  // described above
   private val nrCompFieldsPerSchema =
     compositeContextData.map { d =>
       d.schemaUri -> d.translationTable.count(_._1.startsWith(valueInFieldNameIndicator))
     }.toMap
 
-  private val compositeFieldPrefixes = List("pr", "cu")
+  // This is used to find the composite fields in the original payload
+  // cu is here because it can be part of a schema containing composite fields despite not being
+  // composite itself
+  private val compositeFieldPrefixes = List("pr", "cu", "il", "promo", "cd", "cm", "cg")
 
-  // direct mappings between the snowplow tracker protocol and the measurement protocol
+  // direct mappings between the measurement protocol and the snowplow tracker protocol
   private val directMappings = (hitType: String) => Map(
     "uip" -> "ip",
     "dr"  -> "refr",
@@ -394,9 +416,12 @@ object MeasurementProtocolAdapter extends Adapter {
               Map("e" -> "ue", "ue_pr" -> compact(toUnstructEvent(unstructEventJson)),
                 "tv" -> protocol, "p" -> "srv")
             // contexts
+            // flat contexts
             contexts          <- buildContexts(params, contextData, fieldToSchemaMap)
+            // composite contexts
             compositeContexts <- buildCompositeContexts(params, compositeContextData,
-                                   nrCompFieldsPerSchema, valueInFieldNameIndicator)
+                                   nrCompFieldsPerSchema, compositeFieldPrefixes,
+                                   valueInFieldNameIndicator)
             contextJsons       = (contexts ++ compositeContexts)
               .collect {
                 // an unnecessary pageview context might have been built so we need to remove it
@@ -461,7 +486,7 @@ object MeasurementProtocolAdapter extends Adapter {
   /**
    * Discovers the contexts in the payload in linear time (size of originalParams).
    * @param originalParams original payload in key-value format
-   * @param referenceTable list of context schemas and their associated translation
+   * @param referenceTable map of context schemas and their associated translations
    * @param fieldToSchemaMap reverse indirection from referenceTable linking fields with the MP
    * nomenclature to schemas
    * @return a map containing the discovered contexts keyed by schema
@@ -485,15 +510,30 @@ object MeasurementProtocolAdapter extends Adapter {
     .map { case (k, v) => (k -> v.sequenceU) }
     .sequenceU
 
+  /**
+   * Builds the contexts containing composite fields in quadratic time
+   * (nr of composite fields * avg size for each of them)
+   * @param originalParams original payload in key-value format
+   * @param referenceTable list of context schemas containing composite fields and their
+   * associated translations
+   * @param nrCompFieldsPerSchema map containing the number of field values in the composite field
+   * name. Used to filter out contexts that might have been erroneously built.
+   * @param compFieldPrefixes list of prefixes that are composite fields. Used to filter the
+   * original payload
+   * @param indicator indicator used to determine if a key-value has been extracted from the
+   * composite field name
+   * @return a map containing the composite contexts keyed by schema
+   */
   private def buildCompositeContexts(
     originalParams: Map[String, String],
     referenceTable: List[MPData],
     nrCompFieldsPerSchema: Map[String, Int],
+    compFieldPrefixes: List[String],
     indicator: String
   ): ValidationNel[String, Map[String, Map[String, FieldType]]] = {
-    val compositeParams = originalParams.filterKeys(k => compositeFieldPrefixes.contains(k.take(2)))
+    val compositeParams = originalParams.filterKeys(k => compFieldPrefixes.contains(k.take(2)))
     val newParams = compositeParams
-      .map { case (k, v) => breakDownCompositeField(k, v, indicator).toValidationNel }
+      .map { case (k, v) => breakDownCompField(k, v, indicator).toValidationNel }
       .toList
       .sequenceU
       .map(_.flatten.toMap)
@@ -521,35 +561,45 @@ object MeasurementProtocolAdapter extends Adapter {
   }
 
   /**
-   * 
+   * Breaks down measurement protocol composite fields into a small deterministic payload.
+   * Two cases are possible:
+   *   - the composite field name ends with a value
+   *      e.g. pr12 -> val in this case the payload becomes Map(indicatorpr -> 12, pr -> val)
+   *    - the composite field name ends with a sub field name
+   *      e.g. pr12id -> val in this case the payload becomes Map(indicatorpr -> 12, prid -> val)
+   * @param fieldName raw composite field name
+   * @param value of the composite field
+   * @param indicator string used to notify that this extracted key-value pair was from the
+   * original composite field name
+   * @return a mini payload extracted from the composite field or a failure
    */
-  private[registry] def breakDownCompositeField(
-      fieldName: String,
-      value: String,
-      indicator: String
-    ): Validation[String, Map[String, String]] = {
-    val res = breakDownCompositeField(fieldName)
+  private[registry] def breakDownCompField(
+    fieldName: String,
+    value: String,
+    indicator: String
+  ): Validation[String, Map[String, String]] = {
+    val res = breakDownCompField(fieldName)
     res.flatMap { case (strs, ints) =>
-        val m = if (strs.length == ints.length) {
-          (strs.map(indicator + _) zip ints).toMap.success
-        } else if (strs.length == ints.length + 1) {
-          (strs.init.map(indicator + _) zip ints).toMap.success
-        } else {
-          // can't happen
-          s"Cannot parse field name $fieldName, unexpected number of values inside the field name"
-            .fail
-        }
-        m.map(_ + (strs.reduce(_ + _) -> value))
+      val m = if (strs.length == ints.length) {
+        (strs.map(indicator + _) zip ints).toMap.success
+      } else if (strs.length == ints.length + 1) {
+        (strs.init.map(indicator + _) zip ints).toMap.success
+      } else {
+        // can't happen without chaning breakDownCompField(fieldName)
+        s"Cannot parse field name $fieldName, unexpected number of values inside the field name"
+          .fail
+      }
+      m.map(_ + (strs.reduce(_ + _) -> value))
     }
   }
 
   /**
-   * Breaks down measurement protocol composite fields in a list of strings.
+   * Breaks down measurement protocol composite fields in a pair of list of strings.
    * e.g. abc12def45 becomes (List("abc", "def"), List("12", "45"))
    * @param fieldName raw composite field name
-   * @return the break down of the fields
+   * @return the break down of the field or a failure if it couldn't be parsed
    */
-  private[registry] def breakDownCompositeField(
+  private[registry] def breakDownCompField(
       fieldName: String): Validation[String, (List[String], List[String])] =
     if (fieldName.headOption.isEmpty || fieldName.head.isDigit) {
       s"Malformed composite field name: $fieldName".fail

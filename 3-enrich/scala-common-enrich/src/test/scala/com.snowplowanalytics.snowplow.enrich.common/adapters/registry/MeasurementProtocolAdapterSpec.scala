@@ -41,7 +41,10 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
     toRawEvents returns a succNel containing the direct mappings             $e6
     toRawEvents returns a succNel containing properly typed contexts         $e7
     toRawEvents returns a succNel containing pageview as a context           $e8
-    toRawEvents returns a succNel with composite contexts                    $e9
+    toRawEvents returns a succNel with product composite contexts            $e9
+    toRawEvents returns a succNel with impression composite contexts         $e10
+    toRawEvents returns a succNel with conflicting composite contexts        $e11
+    toRawEvents returns a succNel with repeated composite contexts           $e12
     breakDownCompositeField should work properly                             $e20
   """
 
@@ -61,7 +64,7 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
   val hitContext = (hitType: String) => s"""
     |{
       |"schema":"iglu:com.google.analytics.measurement-protocol/hit/jsonschema/1-0-0",
-      |"data":{"hitType":"$hitType"}
+      |"data":{"type":"$hitType"}
     |}""".stripMargin.replaceAll("[\n\r]", "")
 
   def e1 = {
@@ -266,19 +269,25 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
     actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
   }
 
+  def e10 = e9
+
+  def e11 = e9
+
+  def e12 = e9
+
   def e20 = {
     import MeasurementProtocolAdapter._
-    breakDownCompositeField("pr") must beSuccessful((List("pr"), List.empty[String]))
-    breakDownCompositeField("pr12id") must beSuccessful((List("pr", "id"), List("12")))
-    breakDownCompositeField("12") must beFailing("Malformed composite field name: 12")
-    breakDownCompositeField("") must beFailing("Malformed composite field name: ")
+    breakDownCompField("pr") must beSuccessful((List("pr"), List.empty[String]))
+    breakDownCompField("pr12id") must beSuccessful((List("pr", "id"), List("12")))
+    breakDownCompField("12") must beFailing("Malformed composite field name: 12")
+    breakDownCompField("") must beFailing("Malformed composite field name: ")
 
-    breakDownCompositeField("pr12id", "identifier", "IF") must beSuccessful(
+    breakDownCompField("pr12id", "identifier", "IF") must beSuccessful(
       Map("IFpr" -> "12", "prid" -> "identifier"))
-    breakDownCompositeField("pr12cm42", "value", "IF") must beSuccessful(
+    breakDownCompField("pr12cm42", "value", "IF") must beSuccessful(
       Map("IFpr" -> "12", "IFcm" -> "42", "prcm" -> "value"))
-    breakDownCompositeField("pr", "value", "IF") must beSuccessful(Map("pr" -> "value"))
-    breakDownCompositeField("pr", "", "IF") must beSuccessful(Map("pr" -> ""))
-    breakDownCompositeField("pr12", "val", "IF") must beSuccessful(Map("IFpr" -> "12", "pr" -> "val"))
+    breakDownCompField("pr", "value", "IF") must beSuccessful(Map("pr" -> "value"))
+    breakDownCompField("pr", "", "IF") must beSuccessful(Map("pr" -> ""))
+    breakDownCompField("pr12", "val", "IF") must beSuccessful(Map("IFpr" -> "12", "pr" -> "val"))
   }
 }
