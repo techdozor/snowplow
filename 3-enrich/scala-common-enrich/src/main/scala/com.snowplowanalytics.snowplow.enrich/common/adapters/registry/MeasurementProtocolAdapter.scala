@@ -271,16 +271,16 @@ object MeasurementProtocolAdapter extends Adapter {
     ),
     MPData(SchemaKey(vendor, "product_custom_dimension", format, schemaVersion).toSchemaUri,
       Map(
-        s"${valueInFieldNameIndicator}pr" -> intTranslation("productIndex"),
-        s"${valueInFieldNameIndicator}cd" -> intTranslation("dimensionIndex"),
-        "prcd"                            -> idTranslation("value")
+        s"${valueInFieldNameIndicator}prcd" -> intTranslation("productIndex"),
+        s"${valueInFieldNameIndicator}cd"   -> intTranslation("dimensionIndex"),
+        "prcd"                              -> idTranslation("value")
       )
     ),
     MPData(SchemaKey(vendor, "product_custom_metric", format, schemaVersion).toSchemaUri,
       Map(
-        s"${valueInFieldNameIndicator}pr" -> intTranslation("productIndex"),
-        s"${valueInFieldNameIndicator}cm" -> intTranslation("metricIndex"),
-        "prcm"                            -> intTranslation("value")
+        s"${valueInFieldNameIndicator}prcm" -> intTranslation("productIndex"),
+        s"${valueInFieldNameIndicator}cm"   -> intTranslation("metricIndex"),
+        "prcm"                              -> intTranslation("value")
       )
     ),
     MPData(SchemaKey(vendor, "product_impression_list", format, schemaVersion).toSchemaUri,
@@ -291,32 +291,32 @@ object MeasurementProtocolAdapter extends Adapter {
     ),
     MPData(SchemaKey(vendor, "product_impression", format, schemaVersion).toSchemaUri,
       Map(
-        s"${valueInFieldNameIndicator}il" -> intTranslation("listIndex"),
-        s"${valueInFieldNameIndicator}pi" -> intTranslation("productIndex"),
-        "ilpiid"                          -> idTranslation("sku"),
-        "ilpinm"                          -> idTranslation("name"),
-        "ilpibr"                          -> idTranslation("brand"),
-        "ilpica"                          -> idTranslation("category"),
-        "ilpiva"                          -> idTranslation("variant"),
-        "ilpips"                          -> intTranslation("position"),
-        "ilpipr"                          -> twoDecimalsTranslation("price"),
-        "cu"                              -> idTranslation("currencyCode")
+        s"${valueInFieldNameIndicator}ilpi" -> intTranslation("listIndex"),
+        s"${valueInFieldNameIndicator}pi"   -> intTranslation("productIndex"),
+        "ilpiid"                            -> idTranslation("sku"),
+        "ilpinm"                            -> idTranslation("name"),
+        "ilpibr"                            -> idTranslation("brand"),
+        "ilpica"                            -> idTranslation("category"),
+        "ilpiva"                            -> idTranslation("variant"),
+        "ilpips"                            -> intTranslation("position"),
+        "ilpipr"                            -> twoDecimalsTranslation("price"),
+        "cu"                                -> idTranslation("currencyCode")
       )
     ),
     MPData(SchemaKey(vendor, "product_impression_custom_dimension", format, schemaVersion).toSchemaUri,
       Map(
-        s"${valueInFieldNameIndicator}il" -> intTranslation("listIndex"),
-        s"${valueInFieldNameIndicator}pi" -> intTranslation("productIndex"),
-        s"${valueInFieldNameIndicator}cd" -> intTranslation("customDimensionIndex"),
-        "ilpicd"                          -> idTranslation("value")
+        s"${valueInFieldNameIndicator}ilpicd" -> intTranslation("listIndex"),
+        s"${valueInFieldNameIndicator}picd"   -> intTranslation("productIndex"),
+        s"${valueInFieldNameIndicator}cd"     -> intTranslation("customDimensionIndex"),
+        "ilpicd"                              -> idTranslation("value")
       )
     ),
     MPData(SchemaKey(vendor, "product_impression_custom_metric", format, schemaVersion).toSchemaUri,
       Map(
-        s"${valueInFieldNameIndicator}il" -> intTranslation("listIndex"),
-        s"${valueInFieldNameIndicator}pi" -> intTranslation("productIndex"),
-        s"${valueInFieldNameIndicator}cm" -> intTranslation("customMetricIndex"),
-        "ilpicm"                          -> intTranslation("value")
+        s"${valueInFieldNameIndicator}ilpicm" -> intTranslation("listIndex"),
+        s"${valueInFieldNameIndicator}picm"   -> intTranslation("productIndex"),
+        s"${valueInFieldNameIndicator}cm"     -> intTranslation("customMetricIndex"),
+        "ilpicm"                              -> intTranslation("value")
       )
     ),
     MPData(SchemaKey(vendor, "promotion", format, schemaVersion).toSchemaUri,
@@ -422,7 +422,7 @@ object MeasurementProtocolAdapter extends Adapter {
             compositeContexts <- buildCompositeContexts(params, compositeContextData,
                                    nrCompFieldsPerSchema, compositeFieldPrefixes,
                                    valueInFieldNameIndicator)
-            contextJsons       = (contexts ++ compositeContexts)
+            contextJsons       = (contexts.toList ++ compositeContexts)
               .collect {
                 // an unnecessary pageview context might have been built so we need to remove it
                 case (s, d) if
@@ -431,7 +431,7 @@ object MeasurementProtocolAdapter extends Adapter {
               }
             contextParam       =
               if (contextJsons.isEmpty) Map.empty
-              else Map("co" -> compact(toContexts(contextJsons.toList)))
+              else Map("co" -> compact(toContexts(contextJsons)))
             // direct mappings
             mappings = translatePayload(params, directMappings(hitType))
           } yield RawEvent(
@@ -530,35 +530,45 @@ object MeasurementProtocolAdapter extends Adapter {
     nrCompFieldsPerSchema: Map[String, Int],
     compFieldPrefixes: List[String],
     indicator: String
-  ): ValidationNel[String, Map[String, Map[String, FieldType]]] = {
-    val compositeParams = originalParams.filterKeys(k => compFieldPrefixes.contains(k.take(2)))
-    val newParams = compositeParams
-      .map { case (k, v) => breakDownCompField(k, v, indicator).toValidationNel }
-      .toList
-      .sequenceU
-      .map(_.flatten.toMap)
-
-    newParams.flatMap { _
-      .foldLeft(Map.empty[String, Map[String, ValidationNel[String, FieldType]]]) {
-        case (m, (fieldName, value)) =>
-          val additions = referenceTable
-            .filter(_.translationTable.contains(fieldName))
-            .map { d =>
+  ): ValidationNel[String, List[(String, Map[String, FieldType])]] =
+    for {
+      // composite params have their two first chars in the list of prefixes or are cu
+      // this is done to avoid conflicts between cd custom dimension and cd screen name
+      composite  <- originalParams
+        .filterKeys(k => compFieldPrefixes.contains(k.take(2)) && (k.length > 2 || k == "cu"))
+        .successNel
+      brokenDown <- composite
+        .toList
+        .map { case (k, v) => breakDownCompField(k, v, indicator).toValidationNel }
+        .sequenceU
+      grouped     = brokenDown.flatten.groupBy(_._1).mapValues(_.map(_._2))
+      translated <-
+        grouped.foldLeft(Map.empty[String, Map[String, ValidationNel[String, Seq[FieldType]]]]) {
+          case (m, (fieldName, values)) =>
+            val additions = referenceTable
+              .filter(_.translationTable.contains(fieldName))
+              .map { d =>
                 // this is safe because of the filter above
                 val (translation, newName) = d.translationTable(fieldName)
                 val trTable = m.getOrElse(d.schemaUri, Map.empty) +
-                  (newName -> translation(value).toValidationNel)
+                  (newName -> values.map(v => translation(v).toValidationNel).sequenceU)
                 d.schemaUri -> trTable
-            }.toMap
-          m ++ additions
+              }.toMap
+            m ++ additions
+        }
+        .map { case (k, v) => (k -> v.sequenceU) }
+        .sequenceU
+      transposed  = translated.mapValues { m =>
+        val values = transpose(m.values.map(_.toList).toList)
+        values.map(m.keys zip _).map(_.toMap)
       }
-      // remove contexts that might have been unnecessaily built due to overlapping field names
-      // e.g. ${indicator}pr is in 3 schemas
-      .filter { case (k, v) => v.size > nrCompFieldsPerSchema(k) }
-      .map { case (k, v) => (k -> v.sequenceU) }
-      .sequenceU
-    }
-  }
+      // we need to filter out composite contexts which might have been built unnecessarily
+      // eg due to ${indicator}pr being in 3 different schemas
+      filtered    = transposed
+        .map { case (k, vs) => k -> vs.filter(_.size > nrCompFieldsPerSchema(k)) }
+        .filter(_._2.nonEmpty)
+      flattened   = filtered.toList.flatMap { case (k, vs) => vs.map(k -> _) }
+    } yield flattened 
 
   /**
    * Breaks down measurement protocol composite fields into a small deterministic payload.
@@ -577,21 +587,20 @@ object MeasurementProtocolAdapter extends Adapter {
     fieldName: String,
     value: String,
     indicator: String
-  ): Validation[String, Map[String, String]] = {
-    val res = breakDownCompField(fieldName)
-    res.flatMap { case (strs, ints) =>
-      val m = if (strs.length == ints.length) {
-        (strs.map(indicator + _) zip ints).toMap.success
+  ): Validation[String, Map[String, String]] = for {
+    brokenDown <- breakDownCompField(fieldName)
+    (strs, ints) = brokenDown
+    m <- if (strs.length == ints.length) {
+        (strs.scanRight("")(_ + _).init.map(indicator + _) zip ints).toMap.success
       } else if (strs.length == ints.length + 1) {
-        (strs.init.map(indicator + _) zip ints).toMap.success
+        (strs.init.scanRight("")(_ + _).init.map(indicator + _) zip ints).toMap.success
       } else {
         // can't happen without chaning breakDownCompField(fieldName)
         s"Cannot parse field name $fieldName, unexpected number of values inside the field name"
           .fail
       }
-      m.map(_ + (strs.reduce(_ + _) -> value))
-    }
-  }
+    r = m + (strs.reduce(_ + _) -> value)
+  } yield r
 
   /**
    * Breaks down measurement protocol composite fields in a pair of list of strings.
@@ -615,6 +624,13 @@ object MeasurementProtocolAdapter extends Adapter {
           }
       }
       (ss.reverse, is.reverse).success
+    }
+
+  /** Transposes a list of lists, does not need to be rectangular unlike the stdlib's version. */
+  private def transpose[T](l: List[List[T]]): List[List[T]] =
+    l.flatMap(_.headOption) match {
+      case Nil => Nil
+      case head => head :: transpose(l.collect { case _ :: tail => tail })
     }
 
   private def buildJson(schema: String, fields: Map[String, FieldType]): JValue =

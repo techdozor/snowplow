@@ -261,7 +261,7 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
              |"data":{"sku":"ident","currencyCode":"EUR","index":12}
            |},{
              |"schema":"iglu:com.google.analytics.measurement-protocol/product_custom_dimension/jsonschema/1-0-0",
-             |"data":{"dimensionIndex":42,"value":"val","productIndex":12}
+             |"data":{"dimensionIndex":42,"productIndex":12,"value":"val"}
            |}]
          |}""".stripMargin.replaceAll("[\n\r]", "")
     val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO,
@@ -287,11 +287,11 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
       s"""|{
            |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
            |"data":[${hitContext("pageview")},{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/product_impression_custom_dimension/jsonschema/1-0-0",
+             |"data":{"customDimensionIndex":36,"productIndex":42,"value":"dim","listIndex":12}
+           |},{
              |"schema":"iglu:com.google.analytics.measurement-protocol/product_impression/jsonschema/1-0-0",
              |"data":{"productIndex":42,"sku":"s","listIndex":12}
-           |},{
-             |"schema":"iglu:com.google.analytics.measurement-protocol/product_impression_custom_dimension/jsonschema/1-0-0",
-             |"data":{"customDimensionIndex":36,"value":"dim","productIndex":42,"listIndex":12}
            |}]
          |}""".stripMargin.replaceAll("[\n\r]", "")
     val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO)
@@ -324,21 +324,57 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
     actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
   }
 
-  def e12 = e9
+  def e12 = {
+    val params = SpecHelpers.toNameValuePairs("t" -> "pageview", "dp" -> "path",
+      "pr1id" -> "s1", "pr2id" -> "s2", "pr1cd1" -> "v1", "pr1cd2" -> "v2")
+    val payload = CollectorPayload(api, params, None, None, source, context)
+    val actual = MeasurementProtocolAdapter.toRawEvents(payload)
+
+    val expectedUE =
+      """|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/unstruct_event/jsonschema/1-0-0",
+           |"data":{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/page_view/jsonschema/1-0-0",
+             |"data":{"documentPath":"path"}
+           |}
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    val expectedCO =
+      s"""|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
+           |"data":[${hitContext("pageview")},{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/product_custom_dimension/jsonschema/1-0-0",
+             |"data":{"dimensionIndex":1,"productIndex":1,"value":"v1"}
+           |},{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/product_custom_dimension/jsonschema/1-0-0",
+             |"data":{"dimensionIndex":2,"productIndex":1,"value":"v2"}
+           |},{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/product/jsonschema/1-0-0",
+             |"data":{"sku":"s1","index":1}
+           |},{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/product/jsonschema/1-0-0",
+             |"data":{"sku":"s2","index":2}
+           |}]
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO)
+    actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
+  }
 
   def e20 = {
     import MeasurementProtocolAdapter._
-    breakDownCompField("pr") must beSuccessful((List("pr"), List.empty[String]))
-    breakDownCompField("pr12id") must beSuccessful((List("pr", "id"), List("12")))
-    breakDownCompField("12") must beFailing("Malformed composite field name: 12")
-    breakDownCompField("") must beFailing("Malformed composite field name: ")
+    val s = Seq(
+      breakDownCompField("pr") must beSuccessful((List("pr"), List.empty[String])),
+      breakDownCompField("pr12id") must beSuccessful((List("pr", "id"), List("12"))),
+      breakDownCompField("12") must beFailing("Malformed composite field name: 12"),
+      breakDownCompField("") must beFailing("Malformed composite field name: "),
 
-    breakDownCompField("pr12id", "identifier", "IF") must beSuccessful(
-      Map("IFpr" -> "12", "prid" -> "identifier"))
-    breakDownCompField("pr12cm42", "value", "IF") must beSuccessful(
-      Map("IFpr" -> "12", "IFcm" -> "42", "prcm" -> "value"))
-    breakDownCompField("pr", "value", "IF") must beSuccessful(Map("pr" -> "value"))
-    breakDownCompField("pr", "", "IF") must beSuccessful(Map("pr" -> ""))
-    breakDownCompField("pr12", "val", "IF") must beSuccessful(Map("IFpr" -> "12", "pr" -> "val"))
+      breakDownCompField("pr12id", "identifier", "IF") must beSuccessful(
+        Map("IFpr" -> "12", "prid" -> "identifier")),
+      breakDownCompField("pr12cm42", "value", "IF") must beSuccessful(
+        Map("IFprcm" -> "12", "IFcm" -> "42", "prcm" -> "value")),
+      breakDownCompField("pr", "value", "IF") must beSuccessful(Map("pr" -> "value")),
+      breakDownCompField("pr", "", "IF") must beSuccessful(Map("pr" -> "")),
+      breakDownCompField("pr12", "val", "IF") must beSuccessful(Map("IFpr" -> "12", "pr" -> "val"))
+    )
+    s.reduce(_ and _)
   }
 }
