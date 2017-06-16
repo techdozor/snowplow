@@ -45,6 +45,7 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
     toRawEvents returns a succNel with impression composite contexts         $e10
     toRawEvents returns a succNel with conflicting composite contexts        $e11
     toRawEvents returns a succNel with repeated composite contexts           $e12
+    toRawEvents returns a succNel with promo composite contexts              $e13
     breakDownCompositeField should work properly                             $e20
   """
 
@@ -68,36 +69,31 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
     |}""".stripMargin.replaceAll("[\n\r]", "")
 
   def e1 = {
-    val params = SpecHelpers.toNameValuePairs()
-    val payload = CollectorPayload(api, params, None, None, source, context)
+    val payload = CollectorPayload(api, Nil, None, None, source, context)
     val actual = MeasurementProtocolAdapter.toRawEvents(payload)
     actual must beFailing(NonEmptyList(
-      "Querystring is empty: no MeasurementProtocol event to process"))
+      "Request body is empty: no MeasurementProtocol event to process"))
   }
 
   def e2 = {
-    val params = SpecHelpers.toNameValuePairs("dl" -> "document location")
-    val payload = CollectorPayload(api, params, None, None, source, context)
+    val body = "dl=docloc"
+    val payload = CollectorPayload(api, Nil, None, body.some, source, context)
     val actual = MeasurementProtocolAdapter.toRawEvents(payload)
     actual must beFailing(NonEmptyList(
       "No MeasurementProtocol t parameter provided: cannot determine hit type"))
   }
 
   def e3 = {
-    val params = SpecHelpers.toNameValuePairs("t" -> "unknown", "dl" -> "document location")
-    val payload = CollectorPayload(api, params, None, None, source, context)
+    val body = "t=unknown&dl=docloc"
+    val payload = CollectorPayload(api, Nil, None, body.some, source, context)
     val actual = MeasurementProtocolAdapter.toRawEvents(payload)
     actual must beFailing(NonEmptyList(
       "No matching MeasurementProtocol hit type for hit type unknown"))
   }
 
   def e4 = {
-    val params = SpecHelpers.toNameValuePairs(
-      "t"  -> "pageview",
-      "dh" -> "host name",
-      "dp" -> "path"
-    )
-    val payload = CollectorPayload(api, params, None, None, source, context)
+    val body = "t=pageview&dh=host&dp=path"
+    val payload = CollectorPayload(api, Nil, None, body.some, source, context)
     val actual = MeasurementProtocolAdapter.toRawEvents(payload)
 
     val expectedJson =
@@ -106,7 +102,7 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
            |"data":{
              |"schema":"iglu:com.google.analytics.measurement-protocol/page_view/jsonschema/1-0-0",
              |"data":{
-               |"documentHostName":"host name",
+               |"documentHostName":"host",
                |"documentPath":"path"
              |}
            |}
@@ -121,13 +117,8 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
   }
 
   def e5 = {
-    val params = SpecHelpers.toNameValuePairs(
-      "t"   -> "pageview",
-      "dh"  -> "host name",
-      "cid" -> "client id",
-      "v"   -> "protocol version"
-    )
-    val payload = CollectorPayload(api, params, None, None, source, context)
+    val body = "t=pageview&dh=host&cid=id&v=version"
+    val payload = CollectorPayload(api, Nil, None, body.some, source, context)
     val actual = MeasurementProtocolAdapter.toRawEvents(payload)
 
     val expectedUE =
@@ -136,7 +127,7 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
            |"data":{
              |"schema":"iglu:com.google.analytics.measurement-protocol/page_view/jsonschema/1-0-0",
              |"data":{
-               |"documentHostName":"host name"
+               |"documentHostName":"host"
              |}
            |}
          |}""".stripMargin.replaceAll("[\n\r]", "")
@@ -145,10 +136,10 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
            |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
            |"data":[${hitContext("pageview")},{
              |"schema":"iglu:com.google.analytics.measurement-protocol/user/jsonschema/1-0-0",
-             |"data":{"clientId":"client id"}
+             |"data":{"clientId":"id"}
            |},{
              |"schema":"iglu:com.google.analytics.measurement-protocol/general/jsonschema/1-0-0",
-             |"data":{"protocolVersion":"protocol version"}
+             |"data":{"protocolVersion":"version"}
            |}]
          |}""".stripMargin.replaceAll("[\n\r]", "")
     val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO)
@@ -156,8 +147,8 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
   }
 
   def e6 = {
-    val params = SpecHelpers.toNameValuePairs("t" -> "pageview", "dp" -> "path", "uip" -> "some ip")
-    val payload = CollectorPayload(api, params, None, None, source, context)
+    val body = "t=pageview&dp=path&uip=ip"
+    val payload = CollectorPayload(api, Nil, None, body.some, source, context)
     val actual = MeasurementProtocolAdapter.toRawEvents(payload)
 
     val expectedUE =
@@ -174,17 +165,16 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
            |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
            |"data":[${hitContext("pageview")},{
              |"schema":"iglu:com.google.analytics.measurement-protocol/session/jsonschema/1-0-0",
-             |"data":{"ipOverride":"some ip"}
+             |"data":{"ipOverride":"ip"}
            |}]
          |}""".stripMargin.replaceAll("[\n\r]", "")
-    val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO, "ip" -> "some ip")
+    val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO, "ip" -> "ip")
     actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
   }
 
   def e7 = {
-    val params = SpecHelpers.toNameValuePairs(
-      "t" -> "item", "in" -> "item name", "ip" -> "12.228", "iq" -> "12", "aip" -> "0")
-    val payload = CollectorPayload(api, params, None, None, source, context)
+    val body = "t=item&in=name&ip=12.228&iq=12&aip=0"
+    val payload = CollectorPayload(api, Nil, None, body.some, source, context)
     val actual = MeasurementProtocolAdapter.toRawEvents(payload)
 
     val expectedUE =
@@ -194,7 +184,7 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
              |"schema":"iglu:com.google.analytics.measurement-protocol/item/jsonschema/1-0-0",
              |"data":{
                |"price":12.23,
-               |"name":"item name",
+               |"name":"name",
                |"quantity":12
              |}
            |}
@@ -209,14 +199,13 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
          |}""".stripMargin.replaceAll("[\n\r]", "")
     val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO,
       // ip, iq and in are direct mappings too
-      "ti_pr" -> "12.228", "ti_qu" -> "12", "ti_nm" -> "item name")
+      "ti_pr" -> "12.228", "ti_qu" -> "12", "ti_nm" -> "name")
     actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
   }
 
   def e8 = {
-    val params = SpecHelpers.toNameValuePairs(
-      "t" -> "exception", "exd" -> "ex desc", "exf" -> "1", "dh" -> "host name")
-    val payload = CollectorPayload(api, params, None, None, source, context)
+    val body = "t=exception&exd=desc&exf=1&dh=host"
+    val payload = CollectorPayload(api, Nil, None, body.some, source, context)
     val actual = MeasurementProtocolAdapter.toRawEvents(payload)
 
     val expectedUE =
@@ -224,7 +213,7 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
            |"schema":"iglu:com.snowplowanalytics.snowplow/unstruct_event/jsonschema/1-0-0",
            |"data":{
              |"schema":"iglu:com.google.analytics.measurement-protocol/exception/jsonschema/1-0-0",
-             |"data":{"description":"ex desc","isFatal":true}
+             |"data":{"description":"desc","isFatal":true}
            |}
          |}""".stripMargin.replaceAll("[\n\r]", "")
     val expectedCO =
@@ -232,7 +221,7 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
            |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
            |"data":[${hitContext("exception")},{
              |"schema":"iglu:com.google.analytics.measurement-protocol/page_view/jsonschema/1-0-0",
-             |"data":{"documentHostName":"host name"}
+             |"data":{"documentHostName":"host"}
            |}]
          |}""".stripMargin.replaceAll("[\n\r]", "")
     val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO)
@@ -240,9 +229,8 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
   }
 
   def e9 = {
-    val params = SpecHelpers.toNameValuePairs(
-      "t" -> "transaction", "ti" -> "tr", "cu" -> "EUR", "pr12id" -> "ident", "pr12cd42" -> "val")
-    val payload = CollectorPayload(api, params, None, None, source, context)
+    val body = "t=transaction&ti=tr&cu=EUR&pr12id=ident&pr12cd42=val"
+    val payload = CollectorPayload(api, Nil, None, body.some, source, context)
     val actual = MeasurementProtocolAdapter.toRawEvents(payload)
 
     val expectedUE =
@@ -270,9 +258,8 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
   }
 
   def e10 = {
-    val params = SpecHelpers.toNameValuePairs(
-      "t" -> "pageview", "dp" -> "path", "il12pi42id" -> "s", "il12pi42cd36" -> "dim")
-    val payload = CollectorPayload(api, params, None, None, source, context)
+    val body = "t=pageview&dp=path&il12pi42id=s&il12pi42cd36=dim"
+    val payload = CollectorPayload(api, Nil, None, body.some, source, context)
     val actual = MeasurementProtocolAdapter.toRawEvents(payload)
 
     val expectedUE =
@@ -299,9 +286,8 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
   }
 
   def e11 = {
-    val params = SpecHelpers.toNameValuePairs(
-      "t" -> "screenview", "cd" -> "name", "cd12" -> "dim")
-    val payload = CollectorPayload(api, params, None, None, source, context)
+    val body = "t=screenview&cd=name&cd12=dim"
+    val payload = CollectorPayload(api, Nil, None, body.some, source, context)
     val actual = MeasurementProtocolAdapter.toRawEvents(payload)
 
     val expectedUE =
@@ -325,9 +311,8 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
   }
 
   def e12 = {
-    val params = SpecHelpers.toNameValuePairs("t" -> "pageview", "dp" -> "path",
-      "pr1id" -> "s1", "pr2id" -> "s2", "pr1cd1" -> "v1", "pr1cd2" -> "v2")
-    val payload = CollectorPayload(api, params, None, None, source, context)
+    val body = "t=pageview&dp=path&pr1id=s1&pr2id=s2&pr1cd1=v1&pr1cd2=v2"
+    val payload = CollectorPayload(api, Nil, None, body.some, source, context)
     val actual = MeasurementProtocolAdapter.toRawEvents(payload)
 
     val expectedUE =
@@ -353,6 +338,34 @@ class MeasurementProtocolAdapterSpec extends Specification with DataTables with 
            |},{
              |"schema":"iglu:com.google.analytics.measurement-protocol/product/jsonschema/1-0-0",
              |"data":{"sku":"s2","index":2}
+           |}]
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO)
+    actual must beSuccessful(NonEmptyList(RawEvent(api, expectedParams, None, source, context)))
+  }
+
+  def e13 = {
+    val body = "t=pageview&dp=path&promoa=action&promo12id=id"
+    val payload = CollectorPayload(api, Nil, None, body.some, source, context)
+    val actual = MeasurementProtocolAdapter.toRawEvents(payload)
+
+    val expectedUE =
+      """|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/unstruct_event/jsonschema/1-0-0",
+           |"data":{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/page_view/jsonschema/1-0-0",
+             |"data":{"documentPath":"path"}
+           |}
+         |}""".stripMargin.replaceAll("[\n\r]", "")
+    val expectedCO =
+      s"""|{
+           |"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1",
+           |"data":[${hitContext("pageview")},{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/promotion_action/jsonschema/1-0-0",
+             |"data":{"promotionAction":"action"}
+           |},{
+             |"schema":"iglu:com.google.analytics.measurement-protocol/promotion/jsonschema/1-0-0",
+             |"data":{"index":12,"id":"id"}
            |}]
          |}""".stripMargin.replaceAll("[\n\r]", "")
     val expectedParams = static ++ Map("ue_pr" -> expectedUE, "co" -> expectedCO)

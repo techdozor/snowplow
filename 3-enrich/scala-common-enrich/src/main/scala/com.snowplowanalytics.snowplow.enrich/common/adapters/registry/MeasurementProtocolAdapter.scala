@@ -16,6 +16,13 @@ package snowplow.enrich.common
 package adapters
 package registry
 
+// Java
+import java.net.URI
+import org.apache.http.client.utils.URLEncodedUtils
+
+// Scala
+import scala.collection.JavaConversions._
+
 // Scalaz
 import scalaz._
 import Scalaz._
@@ -363,7 +370,7 @@ object MeasurementProtocolAdapter extends Adapter {
   // This is used to find the composite fields in the original payload
   // cu is here because it can be part of a schema containing composite fields despite not being
   // composite itself
-  private val compositeFieldPrefixes = List("pr", "cu", "il", "promo", "cd", "cm", "cg")
+  private val compositeFieldPrefixes = List("pr", "cu", "il", "cd", "cm", "cg")
 
   // direct mappings between the measurement protocol and the snowplow tracker protocol
   private val directMappings = (hitType: String) => Map(
@@ -397,50 +404,50 @@ object MeasurementProtocolAdapter extends Adapter {
    * @return a Validation boxing either a NEL of RawEvents on Success, or a NEL of Failure Strings
    */
   def toRawEvents(payload: CollectorPayload)(implicit resolver: Resolver): ValidatedRawEvents = {
-    val params = toMap(payload.querystring)
-    if (params.isEmpty) {
-      s"Querystring is empty: no $vendorName event to process".failNel
-    } else {
-      params.get("t") match {
-        case None => s"No $vendorName t parameter provided: cannot determine hit type".failNel
-        case Some(hitType) =>
-          for {
-            // unstruct event
-            trTable             <- unstructEventData.get(hitType).map(_.translationTable)
-              .toSuccess(s"No matching $vendorName hit type for hit type $hitType".wrapNel)
-            schema              <-
-              lookupSchema(hitType.some, vendorName, unstructEventData.mapValues(_.schemaUri))
-            unstructEvent       <- translatePayload(params, trTable)
-            unstructEventJson    = buildJson(schema, unstructEvent)
-            unstructEventParams  =
-              Map("e" -> "ue", "ue_pr" -> compact(toUnstructEvent(unstructEventJson)),
-                "tv" -> protocol, "p" -> "srv")
-            // contexts
-            // flat contexts
-            contexts          <- buildContexts(params, contextData, fieldToSchemaMap)
-            // composite contexts
-            compositeContexts <- buildCompositeContexts(params, compositeContextData,
-                                   nrCompFieldsPerSchema, compositeFieldPrefixes,
-                                   valueInFieldNameIndicator)
-            contextJsons       = (contexts.toList ++ compositeContexts)
-              .collect {
-                // an unnecessary pageview context might have been built so we need to remove it
-                case (s, d) if
-                  hitType != pageViewHitType || s != unstructEventData(pageViewHitType).schemaUri =>
-                    buildJson(s, d)
-              }
-            contextParam       =
-              if (contextJsons.isEmpty) Map.empty
-              else Map("co" -> compact(toContexts(contextJsons)))
-            // direct mappings
-            mappings = translatePayload(params, directMappings(hitType))
-          } yield RawEvent(
-            api         = payload.api,
-            parameters  = unstructEventParams ++ contextParam ++ mappings,
-            contentType = payload.contentType,
-            source      = payload.source,
-            context     = payload.context
-          ).wrapNel
+    payload.body match {
+      case None =>
+        s"Request body is empty: no $vendorName event to process".failNel
+      case Some(body) =>
+        val params = toMap(URLEncodedUtils.parse(URI.create("http://localhost/?" + body), "UTF-8").toList)
+        params.get("t") match {
+          case None => s"No $vendorName t parameter provided: cannot determine hit type".failNel
+          case Some(hitType) =>
+            for {
+              // unstruct event
+              trTable             <- unstructEventData.get(hitType).map(_.translationTable)
+                .toSuccess(s"No matching $vendorName hit type for hit type $hitType".wrapNel)
+              schema              <-
+                lookupSchema(hitType.some, vendorName, unstructEventData.mapValues(_.schemaUri))
+              unstructEvent       <- translatePayload(params, trTable)
+              unstructEventJson    = buildJson(schema, unstructEvent)
+              unstructEventParams  =
+                Map("e" -> "ue", "ue_pr" -> compact(toUnstructEvent(unstructEventJson)),
+                  "tv" -> protocol, "p" -> "srv")
+              // flat contexts
+              contexts          <- buildContexts(params, contextData, fieldToSchemaMap)
+              // composite contexts
+              compositeContexts <- buildCompositeContexts(params, compositeContextData,
+                                    nrCompFieldsPerSchema, compositeFieldPrefixes,
+                                    valueInFieldNameIndicator)
+              contextJsons       = (contexts.toList ++ compositeContexts)
+                .collect {
+                  // an unnecessary pageview context might have been built so we need to remove it
+                  case (s, d) if
+                    hitType != pageViewHitType || s != unstructEventData(pageViewHitType).schemaUri =>
+                      buildJson(s, d)
+                }
+              contextParam       =
+                if (contextJsons.isEmpty) Map.empty
+                else Map("co" -> compact(toContexts(contextJsons)))
+              // direct mappings
+              mappings = translatePayload(params, directMappings(hitType))
+            } yield RawEvent(
+              api         = payload.api,
+              parameters  = unstructEventParams ++ contextParam ++ mappings,
+              contentType = payload.contentType,
+              source      = payload.source,
+              context     = payload.context
+            ).wrapNel
       }
     }
   }
